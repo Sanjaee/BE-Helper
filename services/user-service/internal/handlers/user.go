@@ -224,7 +224,17 @@ func (uh *UserHandler) VerifyOTP(c *gin.Context) {
 	}
 
 	// Check if user is already verified
+	// If user is verified but has OTP, it might be for password reset
 	if user.IsVerified {
+		// Check if this is a password reset OTP by checking if user has OTP but is verified
+		if user.OTPCode != nil {
+			// This is likely a password reset OTP, redirect to password reset flow
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "This OTP is for password reset. Please use the password reset flow.",
+				"code": "OTP_FOR_PASSWORD_RESET",
+			})
+			return
+		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": "User is already verified"})
 		return
 	}
@@ -266,6 +276,118 @@ func (uh *UserHandler) VerifyOTP(c *gin.Context) {
 	*/
 
 	c.JSON(http.StatusOK, authResponse)
+}
+
+// VerifyOTPResetPassword handles OTP verification for password reset
+func (uh *UserHandler) VerifyOTPResetPassword(c *gin.Context) {
+	var req models.OTPVerifyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
+		return
+	}
+
+	// Validate request
+	if err := uh.validator.Struct(req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Validate OTP format
+	if !uh.otpService.ValidateOTP(req.OTPCode) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid OTP format"})
+		return
+	}
+
+	// Find user by email
+	var user models.User
+	if err := uh.db.Where("email = ?", req.Email).First(&user).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+		return
+	}
+
+	// Check if user is verified (must be verified to reset password)
+	if !user.IsVerified {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "User account is not verified"})
+		return
+	}
+
+	// Verify OTP
+	if user.OTPCode == nil || *user.OTPCode != req.OTPCode {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid OTP"})
+		return
+	}
+
+	// For password reset, we don't clear OTP yet - it will be cleared when password is changed
+	// Just return success to allow user to proceed to change password
+	c.JSON(http.StatusOK, gin.H{
+		"message": "OTP verified successfully. You can now change your password.",
+		"user":    user.ToResponse(),
+	})
+}
+
+// CheckUserStatus checks user status and OTP type
+func (uh *UserHandler) CheckUserStatus(c *gin.Context) {
+	var req struct {
+		Email string `json:"email" validate:"required,email"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
+		return
+	}
+
+	// Validate request
+	if err := uh.validator.Struct(req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Find user by email
+	var user models.User
+	if err := uh.db.Where("email = ?", req.Email).First(&user).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			c.JSON(http.StatusOK, gin.H{
+				"status":    "not_found",
+				"needs_otp": false,
+				"otp_type":  nil,
+			})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+		return
+	}
+
+	// Determine status based on user verification and OTP
+	status := "verified"
+	needsOtp := false
+	var otpType *string
+
+	if !user.IsVerified {
+		status = "unverified"
+		needsOtp = true
+		otpType = stringPtr("registration")
+	} else if user.OTPCode != nil {
+		// User is verified but has OTP (likely for password reset)
+		status = "verified_with_otp"
+		needsOtp = true
+		otpType = stringPtr("password_reset")
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":    status,
+		"needs_otp": needsOtp,
+		"otp_type":  otpType,
+		"user":      user.ToResponse(),
+	})
+}
+
+// Helper function to create string pointer
+func stringPtr(s string) *string {
+	return &s
 }
 
 // ResendOTP handles OTP resending
@@ -555,8 +677,6 @@ func (uh *UserHandler) RequestResetPassword(c *gin.Context) {
 	}
 
 	// Publish password reset event to message broker
-	// TODO: Uncomment when event-driven architecture is ready
-	/*
 	if uh.eventService != nil {
 		if err := uh.eventService.PublishPasswordReset(user.ID.String(), user.FullName, user.Email); err != nil {
 			log.Printf("⚠️ Failed to publish password reset event: %v", err)
@@ -564,8 +684,9 @@ func (uh *UserHandler) RequestResetPassword(c *gin.Context) {
 		} else {
 			log.Printf("✅ Password reset event published for: %s", user.Email)
 		}
+	} else {
+		log.Printf("⚠️ Event service not available, skipping password reset event publishing")
 	}
-	*/
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "If the email exists, a reset code has been sent.",
@@ -640,8 +761,6 @@ func (uh *UserHandler) VerifyResetPassword(c *gin.Context) {
 	}
 
 	// Publish password reset success event
-	// TODO: Uncomment when event-driven architecture is ready
-	/*
 	if uh.eventService != nil {
 		if err := uh.eventService.PublishPasswordResetSuccess(user.ID.String(), user.FullName, user.Email); err != nil {
 			log.Printf("⚠️ Failed to publish password reset success event: %v", err)
@@ -649,8 +768,9 @@ func (uh *UserHandler) VerifyResetPassword(c *gin.Context) {
 		} else {
 			log.Printf("✅ Password reset success event published for: %s", user.Email)
 		}
+	} else {
+		log.Printf("⚠️ Event service not available, skipping password reset success event publishing")
 	}
-	*/
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Password reset successfully",

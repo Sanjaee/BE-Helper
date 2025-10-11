@@ -55,7 +55,9 @@ func main() {
 			authRoutes.POST("/refresh-token", proxyToUserService("POST", "/api/v1/auth/refresh-token"))
 			authRoutes.POST("/google-oauth", proxyToUserService("POST", "/api/v1/auth/google-oauth"))
 			authRoutes.POST("/request-reset-password", proxyToUserService("POST", "/api/v1/auth/request-reset-password"))
+			authRoutes.POST("/verify-otp-reset-password", proxyToUserService("POST", "/api/v1/auth/verify-otp-reset-password"))
 			authRoutes.POST("/verify-reset-password", proxyToUserService("POST", "/api/v1/auth/verify-reset-password"))
+			authRoutes.POST("/check-user-status", proxyToUserService("POST", "/api/v1/auth/check-user-status"))
 		}
 
 		// Protected user routes
