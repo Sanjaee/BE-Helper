@@ -5,16 +5,27 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 )
 
-const (
-	UserServiceURL = "http://localhost:5001"
+var (
+	UserServiceURL = getEnv("USER_SERVICE_URL", "http://localhost:5001")
 )
 
+func getEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
+
 func main() {
+	// Log the user service URL being used
+	log.Printf("🔗 User Service URL: %s", UserServiceURL)
+	
 	r := gin.Default()
 
 	// CORS middleware
@@ -120,7 +131,8 @@ func proxyToUserService(method, path string) gin.HandlerFunc {
 		client := &http.Client{}
 		resp, err := client.Do(req)
 		if err != nil {
-			c.JSON(500, gin.H{"error": "User service unavailable"})
+			log.Printf("❌ Failed to connect to user service at %s: %v", url, err)
+			c.JSON(500, gin.H{"error": "User service unavailable", "details": err.Error()})
 			return
 		}
 		defer resp.Body.Close()

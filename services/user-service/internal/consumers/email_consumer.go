@@ -89,8 +89,32 @@ func NewEmailConsumer() (*EmailConsumer, error) {
 		return nil, fmt.Errorf("failed to initialize database: %w", err)
 	}
 
-	// Connect to RabbitMQ (reuse connection logic from events)
-	conn, err := amqp.Dial("amqp://admin:secret123@localhost:5672/")
+	// Get RabbitMQ configuration from environment
+	host := os.Getenv("RABBITMQ_HOST")
+	if host == "" {
+		host = "localhost"
+	}
+
+	port := os.Getenv("RABBITMQ_PORT")
+	if port == "" {
+		port = "5672"
+	}
+
+	username := os.Getenv("RABBITMQ_USERNAME")
+	if username == "" {
+		username = "admin"
+	}
+
+	password := os.Getenv("RABBITMQ_PASSWORD")
+	if password == "" {
+		password = "secret123"
+	}
+
+	// Create connection URL
+	url := fmt.Sprintf("amqp://%s:%s@%s:%s/", username, password, host, port)
+
+	// Connect to RabbitMQ
+	conn, err := amqp.Dial(url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to RabbitMQ: %w", err)
 	}

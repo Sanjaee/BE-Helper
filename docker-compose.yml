@@ -1,25 +1,65 @@
 version: "3.8"
 
 services:
+  # === PostgreSQL Database ===
   postgres:
     image: postgres:15-alpine
     container_name: postgres
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: 123
-      POSTGRES_DB: userdb
+      POSTGRES_DB: postgres # database default
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./db/init:/docker-entrypoint-initdb.d
+    restart: unless-stopped
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
+  # === pgAdmin UI ===
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin123
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+      - ./db/init/pgadmin_servers.json:/pgadmin4/servers.json
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - backend
+
+  # === Redis Cache ===
   redis:
     image: redis:7-alpine
     container_name: redis
     ports:
       - "6379:6379"
+    restart: unless-stopped
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
+  # === RabbitMQ Message Broker ===
   rabbitmq:
     image: rabbitmq:3-management
     container_name: rabbitmq
@@ -29,8 +69,16 @@ services:
     ports:
       - "5672:5672"
       - "15672:15672" # UI Management
+    restart: unless-stopped
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
-  # Go Services
+  # === User Service (Go) ===
   user-service:
     build:
       context: ./services/user-service
@@ -63,11 +111,18 @@ services:
     ports:
       - "5001:5001"
     depends_on:
-      - postgres
-      - redis
-      - rabbitmq
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    command: sh -c "sleep 10 && ./main"
     restart: unless-stopped
+    networks:
+      - backend
 
+  # === API Gateway ===
   api-gateway:
     build:
       context: ./api-gateway
@@ -85,8 +140,19 @@ services:
     ports:
       - "5000:5000"
     depends_on:
-      - user-service
+      user-service:
+        condition: service_started
+    command: sh -c "sleep 5 && ./main"
     restart: unless-stopped
+    networks:
+      - backend
 
+# === Docker Network ===
+networks:
+  backend:
+    driver: bridge
+
+# === Docker Volume ===
 volumes:
   postgres_data:
+  pgadmin_data:

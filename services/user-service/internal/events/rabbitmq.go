@@ -104,18 +104,21 @@ func NewEventService() (*EventService, error) {
 	}
 
 	// Declare exchanges
-	if err := ch.ExchangeDeclare(
-		"user.events", // name
-		"topic",       // type
-		true,          // durable
-		false,         // auto-deleted
-		false,         // internal
-		false,         // no-wait
-		nil,           // arguments
-	); err != nil {
-		ch.Close()
-		conn.Close()
-		return nil, fmt.Errorf("failed to declare exchange: %w", err)
+	exchanges := []string{"user.events", "payment.events"}
+	for _, exchange := range exchanges {
+		if err := ch.ExchangeDeclare(
+			exchange, // name
+			"topic",  // type
+			true,     // durable
+			false,    // auto-deleted
+			false,    // internal
+			false,    // no-wait
+			nil,      // arguments
+		); err != nil {
+			ch.Close()
+			conn.Close()
+			return nil, fmt.Errorf("failed to declare exchange %s: %w", exchange, err)
+		}
 	}
 
 	return &EventService{
