@@ -31,12 +31,6 @@ type UserRegisteredEvent struct {
 	Email    string `json:"email"`
 }
 
-// UserVerifiedEvent represents user verification event
-type UserVerifiedEvent struct {
-	UserID   string `json:"user_id"`
-	Username string `json:"username"`
-	Email    string `json:"email"`
-}
 
 // UserLoginEvent represents user login event
 type UserLoginEvent struct {
@@ -52,12 +46,6 @@ type PasswordResetEvent struct {
 	Email    string `json:"email"`
 }
 
-// PasswordResetSuccessEvent represents password reset success event
-type PasswordResetSuccessEvent struct {
-	UserID   string `json:"user_id"`
-	Username string `json:"username"`
-	Email    string `json:"email"`
-}
 
 // NewEventService creates a new event service
 func NewEventService() (*EventService, error) {
@@ -141,19 +129,6 @@ func (es *EventService) PublishUserRegistered(userID, username, email string) er
 	return es.publishEvent("user.registered", event)
 }
 
-// PublishUserVerified publishes user verification event
-func (es *EventService) PublishUserVerified(userID, username, email string) error {
-	event := Event{
-		Type: "user.verified",
-		Data: UserVerifiedEvent{
-			UserID:   userID,
-			Username: username,
-			Email:    email,
-		},
-	}
-
-	return es.publishEvent("user.verified", event)
-}
 
 // PublishUserLogin publishes user login event
 func (es *EventService) PublishUserLogin(userID, username, email string) error {
@@ -183,19 +158,6 @@ func (es *EventService) PublishPasswordReset(userID, username, email string) err
 	return es.publishEvent("password.reset", event)
 }
 
-// PublishPasswordResetSuccess publishes password reset success event
-func (es *EventService) PublishPasswordResetSuccess(userID, username, email string) error {
-	event := Event{
-		Type: "password.reset.success",
-		Data: PasswordResetSuccessEvent{
-			UserID:   userID,
-			Username: username,
-			Email:    email,
-		},
-	}
-
-	return es.publishEvent("password.reset.success", event)
-}
 
 // UserValidationResponse represents user validation response
 type UserValidationResponse struct {

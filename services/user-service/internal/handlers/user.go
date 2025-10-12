@@ -262,18 +262,6 @@ func (uh *UserHandler) VerifyOTP(c *gin.Context) {
 		return
 	}
 
-	// Publish user verified event to message broker
-	// TODO: Uncomment when event-driven architecture is ready
-	/*
-	if uh.eventService != nil {
-		if err := uh.eventService.PublishUserVerified(user.ID.String(), user.FullName, user.Email); err != nil {
-			log.Printf("⚠️ Failed to publish user verified event: %v", err)
-			// Don't fail the verification if event publishing fails
-		} else {
-			log.Printf("✅ User verified event published for: %s", user.Email)
-		}
-	}
-	*/
 
 	c.JSON(http.StatusOK, authResponse)
 }
@@ -394,6 +382,7 @@ func stringPtr(s string) *string {
 func (uh *UserHandler) ResendOTP(c *gin.Context) {
 	var req struct {
 		Email string `json:"email" validate:"required,email"`
+		Type  string `json:"type"` // "registration" or "password_reset"
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -418,12 +407,6 @@ func (uh *UserHandler) ResendOTP(c *gin.Context) {
 		return
 	}
 
-	// Check if user is already verified
-	if user.IsVerified {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "User is already verified"})
-		return
-	}
-
 	// Generate new OTP
 	otp, err := uh.otpService.GenerateOTP()
 	if err != nil {
@@ -440,13 +423,54 @@ func (uh *UserHandler) ResendOTP(c *gin.Context) {
 		return
 	}
 
-	// Publish user registered event again to resend OTP
-	if uh.eventService != nil {
-		if err := uh.eventService.PublishUserRegistered(user.ID.String(), user.FullName, user.Email); err != nil {
-			log.Printf("⚠️ Failed to publish resend OTP event: %v", err)
-			// Don't fail the resend if event publishing fails
-		} else {
-			log.Printf("✅ Resend OTP event published for: %s", user.Email)
+	// Determine which event to publish based on type
+	if req.Type == "password_reset" {
+		// For password reset, user must be verified
+		if !user.IsVerified {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Account not verified. Please verify your email first."})
+			return
+		}
+
+		// Publish password reset event
+		if uh.eventService != nil {
+			if err := uh.eventService.PublishPasswordReset(user.ID.String(), user.FullName, user.Email); err != nil {
+				log.Printf("⚠️ Failed to publish password reset event: %v", err)
+				// Don't fail the resend if event publishing fails
+			} else {
+				log.Printf("✅ Password reset OTP resend event published for: %s", user.Email)
+			}
+		}
+	} else if req.Type == "registration" {
+		// For registration, user must not be verified
+		if user.IsVerified {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "User is already verified"})
+			return
+		}
+
+		// Publish user registered event again to resend OTP
+		if uh.eventService != nil {
+			if err := uh.eventService.PublishUserRegistered(user.ID.String(), user.FullName, user.Email); err != nil {
+				log.Printf("⚠️ Failed to publish resend OTP event: %v", err)
+				// Don't fail the resend if event publishing fails
+			} else {
+				log.Printf("✅ Resend OTP event published for: %s", user.Email)
+			}
+		}
+	} else {
+		// Default to registration flow for backward compatibility
+		if user.IsVerified {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "User is already verified"})
+			return
+		}
+
+		// Publish user registered event again to resend OTP
+		if uh.eventService != nil {
+			if err := uh.eventService.PublishUserRegistered(user.ID.String(), user.FullName, user.Email); err != nil {
+				log.Printf("⚠️ Failed to publish resend OTP event: %v", err)
+				// Don't fail the resend if event publishing fails
+			} else {
+				log.Printf("✅ Resend OTP event published for: %s", user.Email)
+			}
 		}
 	}
 
@@ -760,17 +784,6 @@ func (uh *UserHandler) VerifyResetPassword(c *gin.Context) {
 		return
 	}
 
-	// Publish password reset success event
-	if uh.eventService != nil {
-		if err := uh.eventService.PublishPasswordResetSuccess(user.ID.String(), user.FullName, user.Email); err != nil {
-			log.Printf("⚠️ Failed to publish password reset success event: %v", err)
-			// Don't fail the request if event publishing fails
-		} else {
-			log.Printf("✅ Password reset success event published for: %s", user.Email)
-		}
-	} else {
-		log.Printf("⚠️ Event service not available, skipping password reset success event publishing")
-	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Password reset successfully",
