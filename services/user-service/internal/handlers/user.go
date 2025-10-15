@@ -17,12 +17,12 @@ import (
 
 // UserHandler handles user-related HTTP requests
 type UserHandler struct {
-	db             *gorm.DB
+	db              *gorm.DB
 	passwordService *models.PasswordService
-	otpService     *models.OTPService
-	JWTService     *JWTService
-	validator      *validator.Validate
-	eventService   *events.EventService
+	otpService      *models.OTPService
+	JWTService      *JWTService
+	validator       *validator.Validate
+	eventService    *events.EventService
 }
 
 // NewUserHandler creates a new user handler
@@ -69,7 +69,7 @@ func (uh *UserHandler) Register(c *gin.Context) {
 		c.JSON(http.StatusConflict, gin.H{"error": "User with this email already exists"})
 		return
 	}
-	
+
 	// Check if phone is provided and already exists
 	if req.Phone != nil && *req.Phone != "" {
 		var existingPhoneUser models.User
@@ -116,7 +116,7 @@ func (uh *UserHandler) Register(c *gin.Context) {
 
 	// Publish user registered event to message broker
 	if uh.eventService != nil {
-		if err := uh.eventService.PublishUserRegistered(user.ID.String(), user.FullName, user.Email); err != nil {
+		if err := uh.eventService.PublishUserRegistered(user.ID.String(), user.FullName, user.Email, otp); err != nil {
 			log.Printf("⚠️ Failed to publish user registered event: %v", err)
 			// Don't fail the registration if event publishing fails
 		} else {
@@ -152,9 +152,9 @@ func (uh *UserHandler) Login(c *gin.Context) {
 	if err := uh.db.Where("email = ?", req.Email).First(&user).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			c.JSON(http.StatusUnauthorized, gin.H{
-				"error": "User not found",
+				"error":   "User not found",
 				"message": "Email tidak terdaftar. Silakan periksa kembali email Anda atau daftar akun baru.",
-				"code": "USER_NOT_FOUND",
+				"code":    "USER_NOT_FOUND",
 			})
 			return
 		}
@@ -165,9 +165,21 @@ func (uh *UserHandler) Login(c *gin.Context) {
 	// Check if user type is credential (not Google OAuth user)
 	if user.LoginType != "CREDENTIAL" {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "Account type mismatch",
+			"error":   "Account type mismatch",
 			"message": "Akun ini dibuat dengan Google. Silakan gunakan tombol 'Masuk dengan Google' untuk login.",
-			"code": "ACCOUNT_TYPE_MISMATCH",
+			"code":    "ACCOUNT_TYPE_MISMATCH",
+		})
+		return
+	}
+
+	// Check if user email is verified
+	if !user.IsVerified {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":   "Email not verified",
+			"message": "Email Anda belum terverifikasi. Silakan cek email Anda dan klik link verifikasi atau masukkan kode OTP yang telah dikirim.",
+			"code":    "EMAIL_NOT_VERIFIED",
+			"user_id": user.ID,
+			"email":   user.Email,
 		})
 		return
 	}
@@ -175,9 +187,9 @@ func (uh *UserHandler) Login(c *gin.Context) {
 	// Verify password
 	if err := uh.passwordService.VerifyPassword(user.PasswordHash, req.Password); err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "Invalid password",
+			"error":   "Invalid password",
 			"message": "Password yang Anda masukkan salah. Silakan coba lagi.",
-			"code": "INVALID_PASSWORD",
+			"code":    "INVALID_PASSWORD",
 		})
 		return
 	}
@@ -231,7 +243,7 @@ func (uh *UserHandler) VerifyOTP(c *gin.Context) {
 			// This is likely a password reset OTP, redirect to password reset flow
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error": "This OTP is for password reset. Please use the password reset flow.",
-				"code": "OTP_FOR_PASSWORD_RESET",
+				"code":  "OTP_FOR_PASSWORD_RESET",
 			})
 			return
 		}
@@ -262,6 +274,12 @@ func (uh *UserHandler) VerifyOTP(c *gin.Context) {
 		return
 	}
 
+	// Publish user login event after successful verification
+	if uh.eventService != nil {
+		if err := uh.eventService.PublishUserLogin(user.ID.String(), user.FullName, user.Email); err != nil {
+			log.Printf("⚠️ Failed to publish user login event: %v", err)
+		}
+	}
 
 	c.JSON(http.StatusOK, authResponse)
 }
@@ -433,7 +451,7 @@ func (uh *UserHandler) ResendOTP(c *gin.Context) {
 
 		// Publish password reset event
 		if uh.eventService != nil {
-			if err := uh.eventService.PublishPasswordReset(user.ID.String(), user.FullName, user.Email); err != nil {
+			if err := uh.eventService.PublishPasswordReset(user.ID.String(), user.FullName, user.Email, otp); err != nil {
 				log.Printf("⚠️ Failed to publish password reset event: %v", err)
 				// Don't fail the resend if event publishing fails
 			} else {
@@ -449,7 +467,7 @@ func (uh *UserHandler) ResendOTP(c *gin.Context) {
 
 		// Publish user registered event again to resend OTP
 		if uh.eventService != nil {
-			if err := uh.eventService.PublishUserRegistered(user.ID.String(), user.FullName, user.Email); err != nil {
+			if err := uh.eventService.PublishUserRegistered(user.ID.String(), user.FullName, user.Email, otp); err != nil {
 				log.Printf("⚠️ Failed to publish resend OTP event: %v", err)
 				// Don't fail the resend if event publishing fails
 			} else {
@@ -465,7 +483,7 @@ func (uh *UserHandler) ResendOTP(c *gin.Context) {
 
 		// Publish user registered event again to resend OTP
 		if uh.eventService != nil {
-			if err := uh.eventService.PublishUserRegistered(user.ID.String(), user.FullName, user.Email); err != nil {
+			if err := uh.eventService.PublishUserRegistered(user.ID.String(), user.FullName, user.Email, otp); err != nil {
 				log.Printf("⚠️ Failed to publish resend OTP event: %v", err)
 				// Don't fail the resend if event publishing fails
 			} else {
@@ -503,7 +521,7 @@ func (uh *UserHandler) GetProfile(c *gin.Context) {
 // GetUserByID handles getting user by ID (for other services)
 func (uh *UserHandler) GetUserByID(c *gin.Context) {
 	userIDStr := c.Param("id")
-	
+
 	// Parse UUID
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
@@ -550,10 +568,10 @@ func (uh *UserHandler) UpdateProfile(c *gin.Context) {
 	}
 
 	var req struct {
-		FullName     string  `json:"full_name" validate:"omitempty,min=2,max=255"`
-		Phone        *string `json:"phone" validate:"omitempty,min=10,max=20"`
-		Gender       *string `json:"gender" validate:"omitempty,oneof=MALE FEMALE"`
-		DateOfBirth  *time.Time `json:"date_of_birth" validate:"omitempty"`
+		FullName    string     `json:"full_name" validate:"omitempty,min=2,max=255"`
+		Phone       *string    `json:"phone" validate:"omitempty,min=10,max=20"`
+		Gender      *string    `json:"gender" validate:"omitempty,oneof=MALE FEMALE"`
+		DateOfBirth *time.Time `json:"date_of_birth" validate:"omitempty"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -668,9 +686,11 @@ func (uh *UserHandler) RequestResetPassword(c *gin.Context) {
 	var user models.User
 	if err := uh.db.Where("email = ?", req.Email).First(&user).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
-			// Don't reveal if email exists or not for security
-			c.JSON(http.StatusOK, gin.H{
-				"message": "If the email exists, a reset code has been sent.",
+			// Return error for non-existent users to prevent unnecessary processing
+			c.JSON(http.StatusNotFound, gin.H{
+				"error":   "Email tidak terdaftar dalam sistem",
+				"message": "Email yang Anda masukkan tidak terdaftar. Silakan periksa kembali atau daftar akun baru.",
+				"code":    "EMAIL_NOT_FOUND",
 			})
 			return
 		}
@@ -702,7 +722,7 @@ func (uh *UserHandler) RequestResetPassword(c *gin.Context) {
 
 	// Publish password reset event to message broker
 	if uh.eventService != nil {
-		if err := uh.eventService.PublishPasswordReset(user.ID.String(), user.FullName, user.Email); err != nil {
+		if err := uh.eventService.PublishPasswordReset(user.ID.String(), user.FullName, user.Email, otp); err != nil {
 			log.Printf("⚠️ Failed to publish password reset event: %v", err)
 			// Don't fail the request if event publishing fails
 		} else {
@@ -784,13 +804,12 @@ func (uh *UserHandler) VerifyResetPassword(c *gin.Context) {
 		return
 	}
 
-
 	c.JSON(http.StatusOK, gin.H{
-		"message": "Password reset successfully",
-		"user":    user.ToResponse(),
-		"access_token": authResponse.AccessToken,
+		"message":       "Password reset successfully",
+		"user":          user.ToResponse(),
+		"access_token":  authResponse.AccessToken,
 		"refresh_token": authResponse.RefreshToken,
-		"expires_in": authResponse.ExpiresIn,
+		"expires_in":    authResponse.ExpiresIn,
 	})
 }
 
@@ -817,7 +836,7 @@ func (uh *UserHandler) GoogleOAuth(c *gin.Context) {
 	// Check if user already exists by email
 	var user models.User
 	err := uh.db.Where("email = ?", req.Email).First(&user).Error
-	
+
 	if err == gorm.ErrRecordNotFound {
 		// Create new user
 		user = models.User{
@@ -830,7 +849,7 @@ func (uh *UserHandler) GoogleOAuth(c *gin.Context) {
 			IsVerified:   true,     // Google users are automatically verified
 			IsActive:     true,
 		}
-		
+
 		if err := uh.db.Create(&user).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
 			return
@@ -844,13 +863,13 @@ func (uh *UserHandler) GoogleOAuth(c *gin.Context) {
 			c.JSON(http.StatusConflict, gin.H{"error": "This email is already registered with credentials. Please use email/password login instead."})
 			return
 		}
-		
+
 		// Update existing Google user with new info
 		user.ProfilePhoto = &req.ProfilePhoto
 		user.GoogleID = &req.GoogleID
 		user.IsVerified = true // Ensure Google users are verified
 		user.UpdatedAt = time.Now()
-		
+
 		if err := uh.db.Save(&user).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
 			return

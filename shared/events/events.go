@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/streadway/amqp"
@@ -29,7 +30,7 @@ type UserRegisteredEvent struct {
 	UserID   string `json:"user_id"`
 	Username string `json:"username"`
 	Email    string `json:"email"`
-	OTP      string `json:"otp"`
+	OTP      string `json:"otp,omitempty"`
 }
 
 // UserLoginEvent represents user login event
@@ -44,7 +45,40 @@ type PasswordResetEvent struct {
 	UserID   string `json:"user_id"`
 	Username string `json:"username"`
 	Email    string `json:"email"`
-	OTP      string `json:"otp"`
+	OTP      string `json:"otp,omitempty"`
+}
+
+// OrderCreatedEvent represents order creation event
+type OrderCreatedEvent struct {
+	OrderID  string  `json:"order_id"`
+	UserID   string  `json:"user_id"`
+	Username string  `json:"username"`
+	Email    string  `json:"email"`
+	Amount   float64 `json:"amount"`
+	Currency string  `json:"currency"`
+}
+
+// PaymentSuccessEvent represents payment success event
+type PaymentSuccessEvent struct {
+	PaymentID string  `json:"payment_id"`
+	OrderID   string  `json:"order_id"`
+	UserID    string  `json:"user_id"`
+	Username  string  `json:"username"`
+	Email     string  `json:"email"`
+	Amount    float64 `json:"amount"`
+	Currency  string  `json:"currency"`
+}
+
+// PaymentFailedEvent represents payment failure event
+type PaymentFailedEvent struct {
+	PaymentID string  `json:"payment_id"`
+	OrderID   string  `json:"order_id"`
+	UserID    string  `json:"user_id"`
+	Username  string  `json:"username"`
+	Email     string  `json:"email"`
+	Reason    string  `json:"reason"`
+	Amount    float64 `json:"amount,omitempty"`
+	Currency  string  `json:"currency,omitempty"`
 }
 
 // NewEventService creates a new event service
@@ -91,8 +125,8 @@ func NewEventService() (*EventService, error) {
 		return nil, fmt.Errorf("failed to open channel: %w", err)
 	}
 
-	// Declare exchanges
-	exchanges := []string{"user.events", "payment.events"}
+	// Declare exchanges for different services
+	exchanges := []string{"user.events", "order.events", "payment.events", "notification.events"}
 	for _, exchange := range exchanges {
 		if err := ch.ExchangeDeclare(
 			exchange, // name
@@ -118,69 +152,115 @@ func NewEventService() (*EventService, error) {
 // PublishUserRegistered publishes user registration event
 func (es *EventService) PublishUserRegistered(userID, username, email, otp string) error {
 	event := Event{
-		Type: "user.registered",
+		Type:   "user.registered",
+		UserID: userID,
 		Data: UserRegisteredEvent{
 			UserID:   userID,
 			Username: username,
 			Email:    email,
 			OTP:      otp,
 		},
+		Timestamp: time.Now().Unix(),
 	}
 
-	return es.publishEvent("user.registered", event)
+	return es.publishEvent("user.events", "user.registered", event)
 }
 
 // PublishUserLogin publishes user login event
 func (es *EventService) PublishUserLogin(userID, username, email string) error {
 	event := Event{
-		Type: "user.login",
+		Type:   "user.login",
+		UserID: userID,
 		Data: UserLoginEvent{
 			UserID:   userID,
 			Username: username,
 			Email:    email,
 		},
+		Timestamp: time.Now().Unix(),
 	}
 
-	return es.publishEvent("user.login", event)
+	return es.publishEvent("user.events", "user.login", event)
 }
 
 // PublishPasswordReset publishes password reset event
 func (es *EventService) PublishPasswordReset(userID, username, email, otp string) error {
 	event := Event{
-		Type: "password.reset",
+		Type:   "password.reset",
+		UserID: userID,
 		Data: PasswordResetEvent{
 			UserID:   userID,
 			Username: username,
 			Email:    email,
 			OTP:      otp,
 		},
+		Timestamp: time.Now().Unix(),
 	}
 
-	return es.publishEvent("password.reset", event)
+	return es.publishEvent("user.events", "password.reset", event)
 }
 
-// UserValidationResponse represents user validation response
-type UserValidationResponse struct {
-	PaymentID string `json:"payment_id"`
-	OrderID   string `json:"order_id"`
-	UserID    string `json:"user_id"`
-	Status    string `json:"status"` // "USER_OK" or "USER_INVALID"
-	Message   string `json:"message,omitempty"`
-}
-
-// PublishUserValidationResponse publishes user validation response
-func (es *EventService) PublishUserValidationResponse(response UserValidationResponse) error {
+// PublishOrderCreated publishes order creation event
+func (es *EventService) PublishOrderCreated(orderID, userID, username, email string, amount float64, currency string) error {
 	event := Event{
-		Type:   "user.validation.response",
-		UserID: response.UserID,
-		Data:   response,
+		Type:   "order.created",
+		UserID: userID,
+		Data: OrderCreatedEvent{
+			OrderID:  orderID,
+			UserID:   userID,
+			Username: username,
+			Email:    email,
+			Amount:   amount,
+			Currency: currency,
+		},
+		Timestamp: time.Now().Unix(),
 	}
 
-	return es.publishEvent("user.validation.response", event)
+	return es.publishEvent("order.events", "order.created", event)
+}
+
+// PublishPaymentSuccess publishes payment success event
+func (es *EventService) PublishPaymentSuccess(paymentID, orderID, userID, username, email string, amount float64, currency string) error {
+	event := Event{
+		Type:   "payment.success",
+		UserID: userID,
+		Data: PaymentSuccessEvent{
+			PaymentID: paymentID,
+			OrderID:   orderID,
+			UserID:    userID,
+			Username:  username,
+			Email:     email,
+			Amount:    amount,
+			Currency:  currency,
+		},
+		Timestamp: time.Now().Unix(),
+	}
+
+	return es.publishEvent("payment.events", "payment.success", event)
+}
+
+// PublishPaymentFailed publishes payment failure event
+func (es *EventService) PublishPaymentFailed(paymentID, orderID, userID, username, email, reason string, amount float64, currency string) error {
+	event := Event{
+		Type:   "payment.failed",
+		UserID: userID,
+		Data: PaymentFailedEvent{
+			PaymentID: paymentID,
+			OrderID:   orderID,
+			UserID:    userID,
+			Username:  username,
+			Email:     email,
+			Reason:    reason,
+			Amount:    amount,
+			Currency:  currency,
+		},
+		Timestamp: time.Now().Unix(),
+	}
+
+	return es.publishEvent("payment.events", "payment.failed", event)
 }
 
 // publishEvent publishes a generic event
-func (es *EventService) publishEvent(routingKey string, event Event) error {
+func (es *EventService) publishEvent(exchange, routingKey string, event Event) error {
 	// Marshal event to JSON
 	body, err := json.Marshal(event)
 	if err != nil {
@@ -189,10 +269,10 @@ func (es *EventService) publishEvent(routingKey string, event Event) error {
 
 	// Publish message
 	err = es.channel.Publish(
-		"user.events", // exchange
-		routingKey,    // routing key
-		false,         // mandatory
-		false,         // immediate
+		exchange,   // exchange
+		routingKey, // routing key
+		false,      // mandatory
+		false,      // immediate
 		amqp.Publishing{
 			ContentType: "application/json",
 			Body:        body,
@@ -203,6 +283,7 @@ func (es *EventService) publishEvent(routingKey string, event Event) error {
 		return fmt.Errorf("failed to publish event: %w", err)
 	}
 
+	log.Printf("✅ Event published: %s.%s", exchange, routingKey)
 	return nil
 }
 

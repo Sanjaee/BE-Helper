@@ -19,10 +19,10 @@ import (
 )
 
 var (
-	DB                *gorm.DB
-	EventService      *events.EventService
-	EmailConsumer     *consumers.EmailConsumer
-	CheckoutConsumer  *consumers.CheckoutConsumer
+	DB               *gorm.DB
+	EventService     *events.EventService
+	EmailConsumer    *consumers.EmailConsumer
+	CheckoutConsumer *consumers.CheckoutConsumer
 )
 
 func initDB() {
@@ -93,7 +93,6 @@ func initDB() {
 	log.Println("✅ Database connected and migrated successfully!")
 }
 
-
 func initRabbitMQ() {
 	var err error
 	EventService, err = events.NewEventService()
@@ -114,7 +113,7 @@ func initEmailConsumer() {
 		log.Println("⚠️ Continuing without email consumer...")
 	} else {
 		log.Println("✅ Email consumer initialized successfully")
-		
+
 		// Start the email consumer
 		if err := EmailConsumer.Start(); err != nil {
 			log.Printf("⚠️ Failed to start email consumer: %v", err)
@@ -132,7 +131,7 @@ func initCheckoutConsumer() {
 
 	// Create user repository
 	userRepo := repository.NewUserRepository(DB)
-	
+
 	// Initialize checkout consumer
 	CheckoutConsumer = consumers.NewCheckoutConsumer(EventService, userRepo)
 	if err := CheckoutConsumer.Start(); err != nil {
@@ -223,6 +222,7 @@ func setupRoutes() *gin.Engine {
 			public.POST("/login", userHandler.Login)
 			public.POST("/verify-otp", userHandler.VerifyOTP)
 			public.POST("/resend-otp", userHandler.ResendOTP)
+			public.POST("/check-verification-status", userHandler.CheckVerificationStatus)
 			public.POST("/refresh-token", userHandler.RefreshToken)
 			public.POST("/google-oauth", userHandler.GoogleOAuth)
 			public.POST("/request-reset-password", userHandler.RequestResetPassword)
@@ -260,7 +260,14 @@ func main() {
 	initRabbitMQ()
 
 	// Initialize Email Consumer
-	initEmailConsumer()
+	// To avoid duplicate email sending (user-service and notification-service),
+	// the legacy email consumer in user-service is disabled by default.
+	// You can re-enable it by setting ENABLE_USER_SERVICE_EMAIL_CONSUMER=true
+	if os.Getenv("ENABLE_USER_SERVICE_EMAIL_CONSUMER") == "true" {
+		initEmailConsumer()
+	} else {
+		log.Println("⚠️ Skipping user-service EmailConsumer (handled by notification-service)")
+	}
 
 	// Initialize Checkout Consumer
 	initCheckoutConsumer()
@@ -280,6 +287,7 @@ func main() {
 	log.Println("  POST /api/v1/auth/login        - Login user")
 	log.Println("  POST /api/v1/auth/verify-otp   - Verify OTP")
 	log.Println("  POST /api/v1/auth/resend-otp   - Resend OTP")
+	log.Println("  POST /api/v1/auth/check-verification-status - Check verification status")
 	log.Println("  POST /api/v1/auth/refresh-token - Refresh JWT token")
 	log.Println("  POST /api/v1/auth/google-oauth - Google OAuth login")
 	log.Println("  POST /api/v1/auth/request-reset-password - Request password reset")
