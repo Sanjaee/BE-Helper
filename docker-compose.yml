@@ -122,6 +122,94 @@ services:
     networks:
       - backend
 
+  # === Order Service ===
+  order-service:
+    build:
+      context: ./services/order-service
+      dockerfile: Dockerfile
+    container_name: order-service
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=123
+      - DB_NAME=orderdb
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USERNAME=admin
+      - RABBITMQ_PASSWORD=secret123
+      - PORT=5002
+      - GIN_MODE=debug
+    ports:
+      - "5002:5002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      uuid-setup:
+        condition: service_completed_successfully
+    command: sh -c "sleep 5 && ./main"
+    restart: unless-stopped
+    networks:
+      - backend
+
+  # === UUID Extension Setup ===
+  uuid-setup:
+    image: postgres:15-alpine
+    container_name: uuid-setup
+    environment:
+      - PGPASSWORD=123
+    command: >
+      sh -c "
+        echo 'Setting up UUID extensions...' &&
+        psql -h postgres -U postgres -d postgres -c 'CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";' &&
+        psql -h postgres -U postgres -d userdb -c 'CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";' &&
+        psql -h postgres -U postgres -d orderdb -c 'CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";' &&
+        psql -h postgres -U postgres -d locationdb -c 'CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";' &&
+        psql -h postgres -U postgres -d paymentdb -c 'CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";' &&
+        psql -h postgres -U postgres -d notificationdb -c 'CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";' &&
+        echo 'UUID extensions setup completed!'
+      "
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+    restart: "no"
+
+  # === Location Service ===
+  location-service:
+    build:
+      context: ./services/location-service
+      dockerfile: Dockerfile
+    container_name: location-service
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=123
+      - DB_NAME=locationdb
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USERNAME=admin
+      - RABBITMQ_PASSWORD=secret123
+      - PORT=5003
+      - GIN_MODE=debug
+    ports:
+      - "5003:5003"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      uuid-setup:
+        condition: service_completed_successfully
+    command: sh -c "sleep 5 && ./main"
+    restart: unless-stopped
+    networks:
+      - backend
+
   # === Notification Service ===
   notification-service:
     build:
@@ -177,8 +265,8 @@ services:
       - JWT_ACCESS_EXPIRY=15m
       - JWT_REFRESH_EXPIRY=168h
       - USER_SERVICE_URL=http://user-service:5001
-      - PRODUCT_SERVICE_URL=http://localhost:5002
-      - PAYMENT_SERVICE_URL=http://localhost:5003
+      - ORDER_SERVICE_URL=http://order-service:5002
+      - LOCATION_SERVICE_URL=http://location-service:5003
       - NOTIFICATION_SERVICE_URL=http://notification-service:5004
       - PORT=5000
       - GIN_MODE=debug
@@ -186,6 +274,10 @@ services:
       - "5000:5000"
     depends_on:
       user-service:
+        condition: service_started
+      order-service:
+        condition: service_started
+      location-service:
         condition: service_started
       notification-service:
         condition: service_started

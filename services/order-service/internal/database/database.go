@@ -1,0 +1,31 @@
+package database
+
+import (
+	"fmt"
+	"order-service/internal/config"
+	"order-service/internal/models"
+
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+)
+
+func Connect(cfg *config.Config) (*gorm.DB, error) {
+	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+		cfg.DBHost, cfg.DBPort, cfg.DBUser, cfg.DBPassword, cfg.DBName)
+
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to database: %w", err)
+	}
+
+	return db, nil
+}
+
+func Migrate(db *gorm.DB) error {
+	return db.AutoMigrate(
+		&models.Order{},
+		&models.OrderBroadcast{},
+		&models.OrderTracking{},
+		&models.LocationHistory{},
+	)
+}

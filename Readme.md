@@ -336,7 +336,6 @@ flowchart TD
     subgraph ORDER["📦 ORDER FLOW"]
         direction TB
         CreateOrderFlow[Create Order Form]
-        CreateOrderFlow --> InputOrder[Input:<br/>- Category<br/>- Location<br/>- Description<br/>- Time]
         InputOrder --> ValidateTokenOrder[(Validate Token)]
         ValidateTokenOrder --> SubmitOrder[Submit]
         SubmitOrder --> SaveOrder[(Save order<br/>PENDING)]
@@ -595,8 +594,6 @@ Table orders {
   order_number varchar(50) [unique, not null]
   client_id uuid [not null, note: 'Reference to User Service - NO FK']
   service_provider_id uuid [note: 'Reference to User Service - NO FK']
-  service_category_id uuid [ref: > service_categories.id, note: 'NULL if custom category']
-  custom_category_name varchar(100) [note: 'For custom service category']
   status varchar(20) [not null, note: 'PENDING, ACCEPTED, ON_THE_WAY, ARRIVED, IN_PROGRESS, COMPLETED, CANCELLED']
   description text
   service_latitude decimal(10,8) [not null, note: 'Client service location latitude']
@@ -797,7 +794,6 @@ Table wallet_transactions {
   wallet_id uuid [ref: > wallets.id, not null]
   transaction_number varchar(50) [unique, not null]
   type varchar(10) [not null, note: 'CREDIT, DEBIT']
-  category varchar(20) [not null, note: 'TOP_UP, PAYMENT, REFUND, WITHDRAWAL, COMMISSION, FEE']
   amount decimal(15,2) [not null]
   balance_before decimal(15,2) [not null]
   balance_after decimal(15,2) [not null]
@@ -811,7 +807,6 @@ Table wallet_transactions {
     wallet_id
     transaction_number
     type
-    category
     reference_id
     created_at
   }

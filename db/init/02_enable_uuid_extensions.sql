@@ -1,23 +1,26 @@
--- Create databases
-CREATE DATABASE userdb;
-CREATE DATABASE orderdb;
-CREATE DATABASE locationdb;
-CREATE DATABASE paymentdb;
-CREATE DATABASE notificationdb;
-
 -- Enable uuid-ossp extension for all databases
+-- This script runs after databases are created
+
+-- Enable extension in main postgres database
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Enable extension in userdb
 \c userdb;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
+-- Enable extension in orderdb  
 \c orderdb;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
+-- Enable extension in locationdb
 \c locationdb;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
+-- Enable extension in paymentdb
 \c paymentdb;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
+-- Enable extension in notificationdb
 \c notificationdb;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
