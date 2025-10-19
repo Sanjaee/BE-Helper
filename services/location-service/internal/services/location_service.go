@@ -5,6 +5,7 @@ import (
 	"location-service/internal/models"
 	"location-service/internal/publisher"
 	"location-service/internal/repository"
+	ws "location-service/internal/websocket"
 	"math"
 	"time"
 
@@ -20,12 +21,14 @@ type LocationService interface {
 type locationService struct {
 	locationRepo   repository.LocationRepository
 	eventPublisher *publisher.EventPublisher
+	wsHub          *ws.Hub
 }
 
-func NewLocationService(locationRepo repository.LocationRepository, eventPublisher *publisher.EventPublisher) LocationService {
+func NewLocationService(locationRepo repository.LocationRepository, eventPublisher *publisher.EventPublisher, wsHub *ws.Hub) LocationService {
 	return &locationService{
 		locationRepo:   locationRepo,
 		eventPublisher: eventPublisher,
+		wsHub:          wsHub,
 	}
 }
 
@@ -70,7 +73,7 @@ func (s *locationService) UpdateLocation(req *models.UpdateLocationRequest) (*mo
 			fmt.Printf("Failed to publish location updated event: %v\n", err)
 		}
 
-		return &models.LocationResponse{
+		response := &models.LocationResponse{
 			OrderID:                 tracking.OrderID,
 			ServiceProviderID:       tracking.ServiceProviderID,
 			Latitude:                tracking.CurrentLatitude,
@@ -79,7 +82,12 @@ func (s *locationService) UpdateLocation(req *models.UpdateLocationRequest) (*mo
 			EstimatedArrivalMinutes: tracking.EstimatedArrivalMinutes,
 			TrackingStatus:          tracking.TrackingStatus,
 			LastUpdated:             tracking.LastUpdated,
-		}, nil
+		}
+
+		// Broadcast to WebSocket clients
+		s.wsHub.Broadcast(req.OrderID, "location_update", response)
+
+		return response, nil
 	}
 
 	// Update existing tracking
@@ -122,7 +130,7 @@ func (s *locationService) UpdateLocation(req *models.UpdateLocationRequest) (*mo
 		fmt.Printf("Failed to publish location updated event: %v\n", err)
 	}
 
-	return &models.LocationResponse{
+	response := &models.LocationResponse{
 		OrderID:                 existingTracking.OrderID,
 		ServiceProviderID:       existingTracking.ServiceProviderID,
 		Latitude:                existingTracking.CurrentLatitude,
@@ -131,7 +139,12 @@ func (s *locationService) UpdateLocation(req *models.UpdateLocationRequest) (*mo
 		EstimatedArrivalMinutes: existingTracking.EstimatedArrivalMinutes,
 		TrackingStatus:          existingTracking.TrackingStatus,
 		LastUpdated:             existingTracking.LastUpdated,
-	}, nil
+	}
+
+	// Broadcast to WebSocket clients
+	s.wsHub.Broadcast(req.OrderID, "location_update", response)
+
+	return response, nil
 }
 
 func (s *locationService) GetOrderLocation(orderID uuid.UUID) (*models.LocationResponse, error) {

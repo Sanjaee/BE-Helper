@@ -5,6 +5,7 @@ import (
 	"order-service/internal/models"
 	"order-service/internal/publisher"
 	"order-service/internal/repository"
+	ws "order-service/internal/websocket"
 	"time"
 
 	"github.com/google/uuid"
@@ -27,13 +28,15 @@ type orderService struct {
 	orderRepo      repository.OrderRepository
 	broadcastRepo  repository.BroadcastRepository
 	eventPublisher *publisher.EventPublisher
+	wsHub          *ws.Hub
 }
 
-func NewOrderService(orderRepo repository.OrderRepository, broadcastRepo repository.BroadcastRepository, eventPublisher *publisher.EventPublisher) OrderService {
+func NewOrderService(orderRepo repository.OrderRepository, broadcastRepo repository.BroadcastRepository, eventPublisher *publisher.EventPublisher, wsHub *ws.Hub) OrderService {
 	return &orderService{
 		orderRepo:      orderRepo,
 		broadcastRepo:  broadcastRepo,
 		eventPublisher: eventPublisher,
+		wsHub:          wsHub,
 	}
 }
 
@@ -110,6 +113,9 @@ func (s *orderService) AcceptOrder(orderID, providerID uuid.UUID) (*models.Order
 		fmt.Printf("Failed to publish order accepted event: %v\n", err)
 	}
 
+	// Broadcast to WebSocket clients
+	s.wsHub.Broadcast(orderID, "order_accepted", order)
+
 	return order, nil
 }
 
@@ -141,6 +147,9 @@ func (s *orderService) UpdateToOnTheWay(orderID, providerID uuid.UUID) (*models.
 		// Log error but don't fail the operation
 		fmt.Printf("Failed to publish order status updated event: %v\n", err)
 	}
+
+	// Broadcast to WebSocket clients
+	s.wsHub.Broadcast(orderID, "order_on_the_way", order)
 
 	return order, nil
 }
@@ -175,6 +184,9 @@ func (s *orderService) UpdateToArrived(orderID, providerID uuid.UUID) (*models.O
 		// Log error but don't fail the operation
 		fmt.Printf("Failed to publish order status updated event: %v\n", err)
 	}
+
+	// Broadcast to WebSocket clients
+	s.wsHub.Broadcast(orderID, "order_arrived", order)
 
 	return order, nil
 }
@@ -212,6 +224,9 @@ func (s *orderService) CancelOrder(orderID, cancelledBy uuid.UUID, reason string
 		// Log error but don't fail the operation
 		fmt.Printf("Failed to publish order cancelled event: %v\n", err)
 	}
+
+	// Broadcast to WebSocket clients
+	s.wsHub.Broadcast(orderID, "order_cancelled", order)
 
 	return order, nil
 }

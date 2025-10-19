@@ -10,6 +10,7 @@ import (
 	"order-service/internal/publisher"
 	"order-service/internal/repository"
 	"order-service/internal/services"
+	ws "order-service/internal/websocket"
 
 	"github.com/gin-gonic/gin"
 )
@@ -36,6 +37,10 @@ func main() {
 	}
 	defer rabbitMQ.Close()
 
+	// Initialize WebSocket hub
+	hub := ws.NewHub()
+	go hub.Run()
+
 	// Initialize repositories
 	orderRepo := repository.NewOrderRepository(db)
 	broadcastRepo := repository.NewBroadcastRepository(db)
@@ -43,8 +48,8 @@ func main() {
 	// Initialize event publisher
 	eventPublisher := publisher.NewEventPublisher(rabbitMQ)
 
-	// Initialize services
-	orderService := services.NewOrderService(orderRepo, broadcastRepo, eventPublisher)
+	// Initialize services with WebSocket hub
+	orderService := services.NewOrderService(orderRepo, broadcastRepo, eventPublisher, hub)
 
 	// Start event consumers in background
 	go events.StartOrderBroadcastListener(rabbitMQ)
@@ -53,6 +58,7 @@ func main() {
 
 	// Initialize handlers
 	orderHandler := handlers.NewOrderHandler(orderService)
+	wsHandler := handlers.NewWebSocketHandler(hub)
 
 	// Setup Gin router
 	r := gin.Default()
@@ -86,6 +92,9 @@ func main() {
 			orders.GET("/client/:client_id", orderHandler.GetClientOrders)
 			orders.GET("/provider/:provider_id", orderHandler.GetProviderOrders)
 		}
+
+		// WebSocket routes
+		api.GET("/ws/orders/:order_id", wsHandler.HandleOrderWebSocket)
 	}
 
 	log.Printf("🚀 Order Service running on port %s", cfg.Port)
@@ -99,6 +108,7 @@ func main() {
 	log.Println("  PATCH /api/v1/orders/:id/cancel       - Cancel order")
 	log.Println("  GET  /api/v1/orders/client/:client_id - Get client orders")
 	log.Println("  GET  /api/v1/orders/provider/:provider_id - Get provider orders")
+	log.Println("  GET  /api/v1/ws/orders/:order_id      - WebSocket for real-time order updates")
 	log.Println("  GET  /health                          - Health check")
 
 	if err := r.Run(":" + cfg.Port); err != nil {

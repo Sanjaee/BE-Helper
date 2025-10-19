@@ -9,6 +9,7 @@ import (
 	"location-service/internal/publisher"
 	"location-service/internal/repository"
 	"location-service/internal/services"
+	ws "location-service/internal/websocket"
 	"log"
 
 	"github.com/gin-gonic/gin"
@@ -36,20 +37,25 @@ func main() {
 	}
 	defer rabbitMQ.Close()
 
+	// Initialize WebSocket hub
+	hub := ws.NewHub()
+	go hub.Run()
+
 	// Initialize repositories
 	locationRepo := repository.NewLocationRepository(db)
 
 	// Initialize event publisher
 	eventPublisher := publisher.NewEventPublisher(rabbitMQ)
 
-	// Initialize services
-	locationService := services.NewLocationService(locationRepo, eventPublisher)
+	// Initialize services with WebSocket hub
+	locationService := services.NewLocationService(locationRepo, eventPublisher, hub)
 
 	// Start event consumers in background
 	go events.StartLocationTrackingListener(rabbitMQ)
 
 	// Initialize handlers
 	locationHandler := handlers.NewLocationHandler(locationService)
+	wsHandler := handlers.NewWebSocketHandler(hub)
 
 	// Setup Gin router
 	r := gin.Default()
@@ -77,6 +83,9 @@ func main() {
 			locations.GET("/order/:order_id/history", locationHandler.GetLocationHistory)
 			locations.GET("/provider/:order_id", locationHandler.GetProviderLocation)
 		}
+
+		// WebSocket routes
+		api.GET("/ws/locations/:order_id", wsHandler.HandleLocationWebSocket)
 	}
 
 	log.Printf("🚀 Location Service running on port %s", cfg.Port)
@@ -85,6 +94,7 @@ func main() {
 	log.Println("  GET  /api/v1/locations/order/:order_id   - Get current location")
 	log.Println("  GET  /api/v1/locations/order/:order_id/history - Get location history")
 	log.Println("  GET  /api/v1/locations/provider/:order_id - Get provider location")
+	log.Println("  GET  /api/v1/ws/locations/:order_id      - WebSocket for real-time location updates")
 	log.Println("  GET  /health                             - Health check")
 
 	if err := r.Run(":" + cfg.Port); err != nil {

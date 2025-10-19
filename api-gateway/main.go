@@ -5,10 +5,12 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 )
 
 var (
@@ -122,6 +124,16 @@ func main() {
 		}
 	}
 
+	// WebSocket Routes
+	wsRoutes := r.Group("/api/v1/ws")
+	{
+		// Order WebSocket - proxy to order service
+		wsRoutes.GET("/orders/:order_id", proxyWebSocketToOrderService())
+
+		// Location WebSocket - proxy to location service
+		wsRoutes.GET("/locations/:order_id", proxyWebSocketToLocationService())
+	}
+
 	log.Println("🚀 API Gateway running on http://localhost:5000")
 	log.Println("📚 Available endpoints:")
 	log.Println("  POST /api/v1/auth/register     - Register new user")
@@ -146,6 +158,8 @@ func main() {
 	log.Println("  GET  /api/v1/locations/order/:order_id - Get order location")
 	log.Println("  GET  /api/v1/locations/order/:order_id/history - Get location history")
 	log.Println("  GET  /api/v1/locations/provider/:order_id - Get provider location")
+	log.Println("  WS   /api/v1/ws/orders/:order_id - WebSocket for order updates")
+	log.Println("  WS   /api/v1/ws/locations/:order_id - WebSocket for location updates")
 	log.Println("  GET  /health                   - Health check")
 
 	r.Run(":5000")
@@ -325,5 +339,98 @@ func proxyToLocationService(method, path string) gin.HandlerFunc {
 
 		// Return response
 		c.Data(resp.StatusCode, resp.Header.Get("Content-Type"), respBody)
+	}
+}
+
+var upgrader = websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
+	CheckOrigin: func(r *http.Request) bool {
+		return true // Allow all origins
+	},
+}
+
+// proxyWebSocketToOrderService proxies WebSocket connections to order service
+func proxyWebSocketToOrderService() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		orderID := c.Param("order_id")
+
+		// Upgrade client connection
+		clientConn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+		if err != nil {
+			log.Printf("Failed to upgrade client connection: %v", err)
+			return
+		}
+		defer clientConn.Close()
+
+		// Connect to order service
+		wsURL := strings.Replace(OrderServiceURL, "http://", "ws://", 1)
+		wsURL = strings.Replace(wsURL, "https://", "wss://", 1)
+		serviceURL, _ := url.Parse(wsURL + "/api/v1/ws/orders/" + orderID)
+
+		serviceConn, _, err := websocket.DefaultDialer.Dial(serviceURL.String(), nil)
+		if err != nil {
+			log.Printf("Failed to connect to order service WebSocket: %v", err)
+			return
+		}
+		defer serviceConn.Close()
+
+		log.Printf("✅ WebSocket proxy established for order: %s", orderID)
+
+		// Proxy bidirectionally
+		go proxyWebSocket(clientConn, serviceConn)
+		proxyWebSocket(serviceConn, clientConn)
+	}
+}
+
+// proxyWebSocketToLocationService proxies WebSocket connections to location service
+func proxyWebSocketToLocationService() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		orderID := c.Param("order_id")
+
+		// Upgrade client connection
+		clientConn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+		if err != nil {
+			log.Printf("Failed to upgrade client connection: %v", err)
+			return
+		}
+		defer clientConn.Close()
+
+		// Connect to location service
+		wsURL := strings.Replace(LocationServiceURL, "http://", "ws://", 1)
+		wsURL = strings.Replace(wsURL, "https://", "wss://", 1)
+		serviceURL, _ := url.Parse(wsURL + "/api/v1/ws/locations/" + orderID)
+
+		serviceConn, _, err := websocket.DefaultDialer.Dial(serviceURL.String(), nil)
+		if err != nil {
+			log.Printf("Failed to connect to location service WebSocket: %v", err)
+			return
+		}
+		defer serviceConn.Close()
+
+		log.Printf("✅ WebSocket proxy established for location: %s", orderID)
+
+		// Proxy bidirectionally
+		go proxyWebSocket(clientConn, serviceConn)
+		proxyWebSocket(serviceConn, clientConn)
+	}
+}
+
+// proxyWebSocket forwards messages between two WebSocket connections
+func proxyWebSocket(src, dst *websocket.Conn) {
+	for {
+		messageType, message, err := src.ReadMessage()
+		if err != nil {
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+				log.Printf("WebSocket error: %v", err)
+			}
+			break
+		}
+
+		err = dst.WriteMessage(messageType, message)
+		if err != nil {
+			log.Printf("Failed to write message: %v", err)
+			break
+		}
 	}
 }
