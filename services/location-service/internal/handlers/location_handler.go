@@ -93,3 +93,27 @@ func (h *LocationHandler) GetLocationHistory(c *gin.Context) {
 		"data": history,
 	})
 }
+
+// GetProviderLocation gets the current location of the provider for an order
+func (h *LocationHandler) GetProviderLocation(c *gin.Context) {
+	orderIDStr := c.Param("order_id")
+	orderID, err := uuid.Parse(orderIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid order ID",
+		})
+		return
+	}
+
+	location, err := h.locationService.GetOrderLocation(orderID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": "Provider location not found",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"data": location,
+	})
+}

@@ -75,6 +75,7 @@ func main() {
 			locations.POST("/track", locationHandler.UpdateLocation)
 			locations.GET("/order/:order_id", locationHandler.GetOrderLocation)
 			locations.GET("/order/:order_id/history", locationHandler.GetLocationHistory)
+			locations.GET("/provider/:order_id", locationHandler.GetProviderLocation)
 		}
 	}
 
@@ -83,6 +84,7 @@ func main() {
 	log.Println("  POST /api/v1/locations/track              - Update location")
 	log.Println("  GET  /api/v1/locations/order/:order_id   - Get current location")
 	log.Println("  GET  /api/v1/locations/order/:order_id/history - Get location history")
+	log.Println("  GET  /api/v1/locations/provider/:order_id - Get provider location")
 	log.Println("  GET  /health                             - Health check")
 
 	if err := r.Run(":" + cfg.Port); err != nil {

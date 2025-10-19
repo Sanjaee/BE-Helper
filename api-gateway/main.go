@@ -118,6 +118,7 @@ func main() {
 			locations.POST("/track", proxyToLocationService("POST", "/api/v1/locations/track"))
 			locations.GET("/order/:order_id", proxyToLocationService("GET", "/api/v1/locations/order/:order_id"))
 			locations.GET("/order/:order_id/history", proxyToLocationService("GET", "/api/v1/locations/order/:order_id/history"))
+			locations.GET("/provider/:order_id", proxyToLocationService("GET", "/api/v1/locations/provider/:order_id"))
 		}
 	}
 
@@ -144,6 +145,7 @@ func main() {
 	log.Println("  POST /api/v1/locations/track   - Update location")
 	log.Println("  GET  /api/v1/locations/order/:order_id - Get order location")
 	log.Println("  GET  /api/v1/locations/order/:order_id/history - Get location history")
+	log.Println("  GET  /api/v1/locations/provider/:order_id - Get provider location")
 	log.Println("  GET  /health                   - Health check")
 
 	r.Run(":5000")
