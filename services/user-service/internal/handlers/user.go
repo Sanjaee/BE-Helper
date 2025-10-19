@@ -570,6 +570,7 @@ func (uh *UserHandler) UpdateProfile(c *gin.Context) {
 	var req struct {
 		FullName    string     `json:"full_name" validate:"omitempty,min=2,max=255"`
 		Phone       *string    `json:"phone" validate:"omitempty,min=10,max=20"`
+		UserType    *string    `json:"user_type" validate:"omitempty,oneof=CLIENT SERVICE_PROVIDER"`
 		Gender      *string    `json:"gender" validate:"omitempty,oneof=MALE FEMALE"`
 		DateOfBirth *time.Time `json:"date_of_birth" validate:"omitempty"`
 	}
@@ -608,6 +609,9 @@ func (uh *UserHandler) UpdateProfile(c *gin.Context) {
 	// Update other fields
 	if req.FullName != "" {
 		user.FullName = req.FullName
+	}
+	if req.UserType != nil {
+		user.UserType = *req.UserType
 	}
 	if req.Gender != nil {
 		user.Gender = req.Gender
