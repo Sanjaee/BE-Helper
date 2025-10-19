@@ -100,6 +100,7 @@ func main() {
 			orders.PATCH("/:id/accept", proxyToOrderService("PATCH", "/api/v1/orders/:id/accept"))
 			orders.PATCH("/:id/on-the-way", proxyToOrderService("PATCH", "/api/v1/orders/:id/on-the-way"))
 			orders.PATCH("/:id/arrived", proxyToOrderService("PATCH", "/api/v1/orders/:id/arrived"))
+			orders.PATCH("/:id/cancel", proxyToOrderService("PATCH", "/api/v1/orders/:id/cancel"))
 			orders.GET("/client/:client_id", proxyToOrderService("GET", "/api/v1/orders/client/:client_id"))
 			orders.GET("/provider/:provider_id", proxyToOrderService("GET", "/api/v1/orders/provider/:provider_id"))
 		}
@@ -137,6 +138,7 @@ func main() {
 	log.Println("  PATCH /api/v1/orders/:id/accept - Accept order")
 	log.Println("  PATCH /api/v1/orders/:id/on-the-way - Update to on the way")
 	log.Println("  PATCH /api/v1/orders/:id/arrived - Update to arrived")
+	log.Println("  PATCH /api/v1/orders/:id/cancel - Cancel order")
 	log.Println("  GET  /api/v1/orders/client/:client_id - Get client orders")
 	log.Println("  GET  /api/v1/orders/provider/:provider_id - Get provider orders")
 	log.Println("  POST /api/v1/locations/track   - Update location")

@@ -267,3 +267,38 @@ func (h *OrderHandler) GetPendingOrders(c *gin.Context) {
 		"data": orders,
 	})
 }
+
+// CancelOrder cancels an order
+func (h *OrderHandler) CancelOrder(c *gin.Context) {
+	orderIDStr := c.Param("id")
+	orderID, err := uuid.Parse(orderIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid order ID",
+		})
+		return
+	}
+
+	var req models.CancelOrderRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Invalid request body",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	order, err := h.orderService.CancelOrder(orderID, req.CancelledBy, req.Reason)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Failed to cancel order",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Order cancelled successfully",
+		"data":    order,
+	})
+}

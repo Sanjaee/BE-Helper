@@ -138,6 +138,11 @@ type AcceptOrderRequest struct {
 	ProviderID uuid.UUID `json:"provider_id" binding:"required"`
 }
 
+type CancelOrderRequest struct {
+	CancelledBy uuid.UUID `json:"cancelled_by" binding:"required"`
+	Reason      string    `json:"reason" binding:"required"`
+}
+
 type UpdateLocationRequest struct {
 	OrderID           uuid.UUID `json:"order_id" binding:"required"`
 	ServiceProviderID uuid.UUID `json:"service_provider_id" binding:"required"`

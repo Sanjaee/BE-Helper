@@ -67,6 +67,26 @@ type NotificationOrderAcceptedEvent struct {
 	AcceptedTime      string `json:"accepted_time"`
 }
 
+// OrderCancelledEvent represents the event when an order is cancelled
+type OrderCancelledEvent struct {
+	OrderID            string `json:"order_id"`
+	ClientID           string `json:"client_id"`
+	ServiceProviderID  string `json:"service_provider_id"`
+	CancelledBy        string `json:"cancelled_by"`
+	CancellationReason string `json:"cancellation_reason"`
+	CancelledTime      string `json:"cancelled_time"`
+}
+
+// NotificationOrderCancelledEvent represents the event for notifying about cancelled order
+type NotificationOrderCancelledEvent struct {
+	OrderID            string `json:"order_id"`
+	ClientID           string `json:"client_id"`
+	ServiceProviderID  string `json:"service_provider_id"`
+	CancelledBy        string `json:"cancelled_by"`
+	CancellationReason string `json:"cancellation_reason"`
+	CancelledTime      string `json:"cancelled_time"`
+}
+
 // StartOrderBroadcastListener listens for order.created events and broadcasts to providers
 func StartOrderBroadcastListener(rabbitMQ *RabbitMQ) {
 	msgs, err := rabbitMQ.Consume("order.broadcast.queue", "order.exchange", "order.created")
@@ -145,6 +165,44 @@ func StartOrderAcceptedListener(rabbitMQ *RabbitMQ) {
 			log.Printf("Failed to publish order accepted notification: %v", err)
 		} else {
 			log.Printf("📤 Published order accepted notification for order: %s", event.OrderID)
+		}
+	}
+}
+
+// StartOrderCancelledListener listens for order.cancelled events
+func StartOrderCancelledListener(rabbitMQ *RabbitMQ) {
+	msgs, err := rabbitMQ.Consume("order.cancelled.queue", "order.exchange", "order.cancelled")
+	if err != nil {
+		log.Printf("Failed to start order cancelled listener: %v", err)
+		return
+	}
+
+	log.Println("🎧 Order cancelled listener started")
+
+	for msg := range msgs {
+		var event OrderCancelledEvent
+		if err := json.Unmarshal(msg.Body, &event); err != nil {
+			log.Printf("Failed to unmarshal order cancelled event: %v", err)
+			continue
+		}
+
+		log.Printf("❌ Received order cancelled event: %s", event.OrderID)
+
+		// Create notification event
+		notificationEvent := NotificationOrderCancelledEvent{
+			OrderID:            event.OrderID,
+			ClientID:           event.ClientID,
+			ServiceProviderID:  event.ServiceProviderID,
+			CancelledBy:        event.CancelledBy,
+			CancellationReason: event.CancellationReason,
+			CancelledTime:      event.CancelledTime,
+		}
+
+		// Publish to notification service
+		if err := rabbitMQ.Publish("notification.exchange", "notification.order.cancelled", notificationEvent); err != nil {
+			log.Printf("Failed to publish order cancelled notification: %v", err)
+		} else {
+			log.Printf("📤 Published order cancelled notification for order: %s", event.OrderID)
 		}
 	}
 }

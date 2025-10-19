@@ -16,6 +16,7 @@ type OrderService interface {
 	AcceptOrder(orderID, providerID uuid.UUID) (*models.Order, error)
 	UpdateToOnTheWay(orderID, providerID uuid.UUID) (*models.Order, error)
 	UpdateToArrived(orderID, providerID uuid.UUID) (*models.Order, error)
+	CancelOrder(orderID, cancelledBy uuid.UUID, reason string) (*models.Order, error)
 	GetClientOrders(clientID uuid.UUID) ([]models.Order, error)
 	GetProviderOrders(providerID uuid.UUID) ([]models.Order, error)
 	GetPendingOrders() ([]models.Order, error)
@@ -173,6 +174,43 @@ func (s *orderService) UpdateToArrived(orderID, providerID uuid.UUID) (*models.O
 	if err := s.eventPublisher.PublishOrderStatusUpdated(order); err != nil {
 		// Log error but don't fail the operation
 		fmt.Printf("Failed to publish order status updated event: %v\n", err)
+	}
+
+	return order, nil
+}
+
+func (s *orderService) CancelOrder(orderID, cancelledBy uuid.UUID, reason string) (*models.Order, error) {
+	// Get order
+	order, err := s.orderRepo.GetByID(orderID)
+	if err != nil {
+		return nil, fmt.Errorf("order not found: %w", err)
+	}
+
+	// Check if order can be cancelled
+	if order.Status == models.OrderStatusCompleted || order.Status == models.OrderStatusCancelled {
+		return nil, fmt.Errorf("order cannot be cancelled")
+	}
+
+	// Check authorization - only client or assigned provider can cancel
+	if order.ClientID != cancelledBy && (order.ServiceProviderID == nil || *order.ServiceProviderID != cancelledBy) {
+		return nil, fmt.Errorf("unauthorized to cancel this order")
+	}
+
+	// Update order
+	now := time.Now()
+	order.Status = models.OrderStatusCancelled
+	order.CancelledTime = &now
+	order.CancelledBy = &cancelledBy
+	order.CancellationReason = reason
+
+	if err := s.orderRepo.Update(order); err != nil {
+		return nil, fmt.Errorf("failed to update order: %w", err)
+	}
+
+	// Publish order cancelled event
+	if err := s.eventPublisher.PublishOrderCancelled(order); err != nil {
+		// Log error but don't fail the operation
+		fmt.Printf("Failed to publish order cancelled event: %v\n", err)
 	}
 
 	return order, nil

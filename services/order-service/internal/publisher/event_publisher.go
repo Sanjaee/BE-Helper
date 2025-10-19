@@ -77,6 +77,16 @@ type NotificationOrderAcceptedEvent struct {
 	AcceptedTime      string `json:"accepted_time"`
 }
 
+// OrderCancelledEvent represents the event when an order is cancelled
+type OrderCancelledEvent struct {
+	OrderID            string `json:"order_id"`
+	ClientID           string `json:"client_id"`
+	ServiceProviderID  string `json:"service_provider_id"`
+	CancelledBy        string `json:"cancelled_by"`
+	CancellationReason string `json:"cancellation_reason"`
+	CancelledTime      string `json:"cancelled_time"`
+}
+
 // PublishOrderCreated publishes order.created event
 func (p *EventPublisher) PublishOrderCreated(order *models.Order) error {
 	event := OrderCreatedEvent{
@@ -128,4 +138,22 @@ func (p *EventPublisher) PublishLocationUpdated(tracking *models.OrderTracking) 
 	}
 
 	return p.rabbitMQ.Publish("location.exchange", "location.updated", event)
+}
+
+// PublishOrderCancelled publishes order cancelled event
+func (p *EventPublisher) PublishOrderCancelled(order *models.Order) error {
+	event := OrderCancelledEvent{
+		OrderID:            order.ID.String(),
+		ClientID:           order.ClientID.String(),
+		ServiceProviderID:  "",
+		CancelledBy:        order.CancelledBy.String(),
+		CancellationReason: order.CancellationReason,
+		CancelledTime:      order.CancelledTime.Format("2006-01-02T15:04:05Z07:00"),
+	}
+
+	if order.ServiceProviderID != nil {
+		event.ServiceProviderID = order.ServiceProviderID.String()
+	}
+
+	return p.rabbitMQ.Publish("order.exchange", "order.cancelled", event)
 }

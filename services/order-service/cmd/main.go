@@ -49,6 +49,7 @@ func main() {
 	// Start event consumers in background
 	go events.StartOrderBroadcastListener(rabbitMQ)
 	go events.StartOrderAcceptedListener(rabbitMQ)
+	go events.StartOrderCancelledListener(rabbitMQ)
 
 	// Initialize handlers
 	orderHandler := handlers.NewOrderHandler(orderService)
@@ -81,6 +82,7 @@ func main() {
 			orders.PATCH("/:id/accept", orderHandler.AcceptOrder)
 			orders.PATCH("/:id/on-the-way", orderHandler.UpdateToOnTheWay)
 			orders.PATCH("/:id/arrived", orderHandler.UpdateToArrived)
+			orders.PATCH("/:id/cancel", orderHandler.CancelOrder)
 			orders.GET("/client/:client_id", orderHandler.GetClientOrders)
 			orders.GET("/provider/:provider_id", orderHandler.GetProviderOrders)
 		}
@@ -94,6 +96,7 @@ func main() {
 	log.Println("  PATCH /api/v1/orders/:id/accept       - Accept order")
 	log.Println("  PATCH /api/v1/orders/:id/on-the-way   - Update to on the way")
 	log.Println("  PATCH /api/v1/orders/:id/arrived      - Update to arrived")
+	log.Println("  PATCH /api/v1/orders/:id/cancel       - Cancel order")
 	log.Println("  GET  /api/v1/orders/client/:client_id - Get client orders")
 	log.Println("  GET  /api/v1/orders/provider/:provider_id - Get provider orders")
 	log.Println("  GET  /health                          - Health check")
