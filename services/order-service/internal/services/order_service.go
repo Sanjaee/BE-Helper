@@ -163,9 +163,9 @@ func (s *orderService) UpdateToArrived(orderID, providerID uuid.UUID) (*models.O
 		return nil, fmt.Errorf("order not found: %w", err)
 	}
 
-	// Check if order is on the way and provider matches
-	if order.Status != models.OrderStatusOnTheWay {
-		return nil, fmt.Errorf("order is not on the way")
+	// Check if order is accepted or on the way, and provider matches
+	if order.Status != models.OrderStatusAccepted && order.Status != models.OrderStatusOnTheWay {
+		return nil, fmt.Errorf("order must be in accepted or on the way status")
 	}
 
 	if order.ServiceProviderID == nil || *order.ServiceProviderID != providerID {
