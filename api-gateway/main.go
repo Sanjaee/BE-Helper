@@ -102,6 +102,8 @@ func main() {
 			orders.PATCH("/:id/accept", proxyToOrderService("PATCH", "/api/v1/orders/:id/accept"))
 			orders.PATCH("/:id/on-the-way", proxyToOrderService("PATCH", "/api/v1/orders/:id/on-the-way"))
 			orders.PATCH("/:id/arrived", proxyToOrderService("PATCH", "/api/v1/orders/:id/arrived"))
+			orders.PATCH("/:id/start-job", proxyToOrderService("PATCH", "/api/v1/orders/:id/start-job"))
+			orders.PATCH("/:id/complete-job", proxyToOrderService("PATCH", "/api/v1/orders/:id/complete-job"))
 			orders.PATCH("/:id/cancel", proxyToOrderService("PATCH", "/api/v1/orders/:id/cancel"))
 			orders.GET("/client/:client_id", proxyToOrderService("GET", "/api/v1/orders/client/:client_id"))
 			orders.GET("/provider/:provider_id", proxyToOrderService("GET", "/api/v1/orders/provider/:provider_id"))
@@ -151,6 +153,8 @@ func main() {
 	log.Println("  PATCH /api/v1/orders/:id/accept - Accept order")
 	log.Println("  PATCH /api/v1/orders/:id/on-the-way - Update to on the way")
 	log.Println("  PATCH /api/v1/orders/:id/arrived - Update to arrived")
+	log.Println("  PATCH /api/v1/orders/:id/start-job - Start job")
+	log.Println("  PATCH /api/v1/orders/:id/complete-job - Complete job")
 	log.Println("  PATCH /api/v1/orders/:id/cancel - Cancel order")
 	log.Println("  GET  /api/v1/orders/client/:client_id - Get client orders")
 	log.Println("  GET  /api/v1/orders/provider/:provider_id - Get provider orders")
@@ -178,6 +182,12 @@ func proxyToUserService(method, path string) gin.HandlerFunc {
 		actualPath := path
 		for _, param := range c.Params {
 			actualPath = strings.Replace(actualPath, ":"+param.Key, param.Value, -1)
+		}
+
+		// Add query parameters
+		queryParams := c.Request.URL.Query()
+		if len(queryParams) > 0 {
+			actualPath += "?" + queryParams.Encode()
 		}
 
 		// Create new request to user service
@@ -239,6 +249,12 @@ func proxyToOrderService(method, path string) gin.HandlerFunc {
 			actualPath = strings.Replace(actualPath, ":"+param.Key, param.Value, -1)
 		}
 
+		// Add query parameters
+		queryParams := c.Request.URL.Query()
+		if len(queryParams) > 0 {
+			actualPath += "?" + queryParams.Encode()
+		}
+
 		// Create new request to order service
 		url := OrderServiceURL + actualPath
 		req, err := http.NewRequest(method, url, bytes.NewBuffer(bodyBytes))
@@ -296,6 +312,12 @@ func proxyToLocationService(method, path string) gin.HandlerFunc {
 		actualPath := path
 		for _, param := range c.Params {
 			actualPath = strings.Replace(actualPath, ":"+param.Key, param.Value, -1)
+		}
+
+		// Add query parameters
+		queryParams := c.Request.URL.Query()
+		if len(queryParams) > 0 {
+			actualPath += "?" + queryParams.Encode()
 		}
 
 		// Create new request to location service

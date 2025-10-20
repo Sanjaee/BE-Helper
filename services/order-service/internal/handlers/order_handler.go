@@ -302,3 +302,95 @@ func (h *OrderHandler) CancelOrder(c *gin.Context) {
 		"data":    order,
 	})
 }
+
+// StartJob starts the job after provider has arrived
+func (h *OrderHandler) StartJob(c *gin.Context) {
+	orderIDStr := c.Param("id")
+	orderID, err := uuid.Parse(orderIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid order ID",
+		})
+		return
+	}
+
+	// Get provider ID from query parameter or header
+	providerIDStr := c.Query("provider_id")
+	if providerIDStr == "" {
+		providerIDStr = c.GetHeader("X-Provider-ID")
+	}
+	if providerIDStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Provider ID is required",
+		})
+		return
+	}
+
+	providerID, err := uuid.Parse(providerIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid provider ID",
+		})
+		return
+	}
+
+	order, err := h.orderService.StartJob(orderID, providerID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Failed to start job",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Job started successfully",
+		"data":    order,
+	})
+}
+
+// CompleteJob marks the job as completed by provider
+func (h *OrderHandler) CompleteJob(c *gin.Context) {
+	orderIDStr := c.Param("id")
+	orderID, err := uuid.Parse(orderIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid order ID",
+		})
+		return
+	}
+
+	// Get provider ID from query parameter or header
+	providerIDStr := c.Query("provider_id")
+	if providerIDStr == "" {
+		providerIDStr = c.GetHeader("X-Provider-ID")
+	}
+	if providerIDStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Provider ID is required",
+		})
+		return
+	}
+
+	providerID, err := uuid.Parse(providerIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid provider ID",
+		})
+		return
+	}
+
+	order, err := h.orderService.CompleteJob(orderID, providerID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Failed to complete job",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Job completed successfully, waiting for client approval",
+		"data":    order,
+	})
+}

@@ -17,6 +17,8 @@ type OrderService interface {
 	AcceptOrder(orderID, providerID uuid.UUID) (*models.Order, error)
 	UpdateToOnTheWay(orderID, providerID uuid.UUID) (*models.Order, error)
 	UpdateToArrived(orderID, providerID uuid.UUID) (*models.Order, error)
+	StartJob(orderID, providerID uuid.UUID) (*models.Order, error)
+	CompleteJob(orderID, providerID uuid.UUID) (*models.Order, error)
 	CancelOrder(orderID, cancelledBy uuid.UUID, reason string) (*models.Order, error)
 	GetClientOrders(clientID uuid.UUID) ([]models.Order, error)
 	GetProviderOrders(providerID uuid.UUID) ([]models.Order, error)
@@ -187,6 +189,86 @@ func (s *orderService) UpdateToArrived(orderID, providerID uuid.UUID) (*models.O
 
 	// Broadcast to WebSocket clients
 	s.wsHub.Broadcast(orderID, "order_arrived", order)
+
+	return order, nil
+}
+
+func (s *orderService) StartJob(orderID, providerID uuid.UUID) (*models.Order, error) {
+	// Get order
+	order, err := s.orderRepo.GetByID(orderID)
+	if err != nil {
+		return nil, fmt.Errorf("order not found: %w", err)
+	}
+
+	// Check if order status is arrived and provider matches
+	if order.Status != models.OrderStatusArrived {
+		return nil, fmt.Errorf("order is not in arrived status")
+	}
+
+	if order.ServiceProviderID == nil || *order.ServiceProviderID != providerID {
+		return nil, fmt.Errorf("unauthorized to start this job")
+	}
+
+	// Update order
+	now := time.Now()
+	order.Status = models.OrderStatusInProgress
+	order.StartedTime = &now
+
+	if err := s.orderRepo.Update(order); err != nil {
+		return nil, fmt.Errorf("failed to update order: %w", err)
+	}
+
+	// Publish status update event
+	if err := s.eventPublisher.PublishOrderStatusUpdated(order); err != nil {
+		// Log error but don't fail the operation
+		fmt.Printf("Failed to publish order status updated event: %v\n", err)
+	}
+
+	// Broadcast to WebSocket clients
+	s.wsHub.Broadcast(orderID, "job_started", order)
+
+	return order, nil
+}
+
+func (s *orderService) CompleteJob(orderID, providerID uuid.UUID) (*models.Order, error) {
+	// Get order
+	order, err := s.orderRepo.GetByID(orderID)
+	if err != nil {
+		return nil, fmt.Errorf("order not found: %w", err)
+	}
+
+	// Check if order is in progress and provider matches
+	if order.Status != models.OrderStatusInProgress {
+		return nil, fmt.Errorf("order is not in progress")
+	}
+
+	if order.ServiceProviderID == nil || *order.ServiceProviderID != providerID {
+		return nil, fmt.Errorf("unauthorized to complete this job")
+	}
+
+	// Calculate duration
+	now := time.Now()
+	if order.StartedTime != nil {
+		duration := now.Sub(*order.StartedTime)
+		order.DurationMinutes = int(duration.Minutes())
+	}
+
+	// Update order
+	order.Status = models.OrderStatusCompleted
+	order.CompletedTime = &now
+
+	if err := s.orderRepo.Update(order); err != nil {
+		return nil, fmt.Errorf("failed to update order: %w", err)
+	}
+
+	// Publish status update event
+	if err := s.eventPublisher.PublishOrderStatusUpdated(order); err != nil {
+		// Log error but don't fail the operation
+		fmt.Printf("Failed to publish order status updated event: %v\n", err)
+	}
+
+	// Broadcast to WebSocket clients
+	s.wsHub.Broadcast(orderID, "job_completed", order)
 
 	return order, nil
 }
