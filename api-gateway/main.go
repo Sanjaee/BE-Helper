@@ -85,6 +85,17 @@ func main() {
 			userProtectedRoutes.GET("/profile", proxyToUserService("GET", "/api/v1/user/profile"))
 			userProtectedRoutes.PUT("/profile", proxyToUserService("PUT", "/api/v1/user/profile"))
 		}
+
+		// Rating routes
+		ratings := userRoutes.Group("/ratings")
+		{
+			ratings.POST("", proxyToUserService("POST", "/api/v1/ratings"))
+			ratings.GET("/my-ratings", proxyToUserService("GET", "/api/v1/ratings/my-ratings"))
+			ratings.GET("/order/:order_id", proxyToUserService("GET", "/api/v1/ratings/order/:order_id"))
+			ratings.GET("/order/:order_id/check", proxyToUserService("GET", "/api/v1/ratings/order/:order_id/check"))
+			ratings.GET("/provider/:provider_id", proxyToUserService("GET", "/api/v1/ratings/provider/:provider_id"))
+			ratings.GET("/provider/:provider_id/stats", proxyToUserService("GET", "/api/v1/ratings/provider/:provider_id/stats"))
+		}
 	}
 
 	// Order Service Routes

@@ -80,8 +80,8 @@ func initDB() {
 		log.Fatalf("❌ Database not responding: %v", err)
 	}
 
-	// Auto migrate the User model
-	if err := DB.AutoMigrate(&models.User{}); err != nil {
+	// Auto migrate the User and Rating models
+	if err := DB.AutoMigrate(&models.User{}, &models.Rating{}); err != nil {
 		log.Fatalf("❌ Failed to migrate database: %v", err)
 	}
 
@@ -144,6 +144,7 @@ func initCheckoutConsumer() {
 func setupRoutes() *gin.Engine {
 	// Initialize handlers
 	userHandler := handlers.NewUserHandler(DB)
+	ratingHandler := handlers.NewRatingHandler(DB)
 
 	// Setup Gin with middleware
 	r := gin.Default()
@@ -237,6 +238,20 @@ func setupRoutes() *gin.Engine {
 		{
 			protected.GET("/profile", userHandler.GetProfile)
 			protected.PUT("/profile", userHandler.UpdateProfile)
+		}
+
+		// Rating routes
+		ratings := api.Group("/ratings")
+		{
+			// Protected routes (authentication required)
+			ratings.POST("", userHandler.JWTService.AuthMiddleware(), ratingHandler.CreateRating)
+			ratings.GET("/my-ratings", userHandler.JWTService.AuthMiddleware(), ratingHandler.GetClientRatings)
+
+			// Public routes
+			ratings.GET("/order/:order_id", ratingHandler.GetRatingByOrder)
+			ratings.GET("/order/:order_id/check", ratingHandler.CheckIfRated)
+			ratings.GET("/provider/:provider_id", ratingHandler.GetProviderRatings)
+			ratings.GET("/provider/:provider_id/stats", ratingHandler.GetProviderStats)
 		}
 
 		// Public routes for other services (no authentication required)
