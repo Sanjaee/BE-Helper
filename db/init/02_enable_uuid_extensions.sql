@@ -24,5 +24,9 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 \c notificationdb;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
+-- Enable extension in chatdb
+\c chatdb;
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
 -- Switch back to default database
 \c postgres;

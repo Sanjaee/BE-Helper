@@ -4,6 +4,7 @@ CREATE DATABASE orderdb;
 CREATE DATABASE locationdb;
 CREATE DATABASE paymentdb;
 CREATE DATABASE notificationdb;
+CREATE DATABASE chatdb;
 
 -- Enable uuid-ossp extension for all databases
 \c userdb;
@@ -19,6 +20,9 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 \c notificationdb;
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+\c chatdb;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Switch back to default database

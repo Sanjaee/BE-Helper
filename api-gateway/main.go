@@ -18,6 +18,7 @@ var (
 	OrderServiceURL        = getEnv("ORDER_SERVICE_URL", "http://localhost:5002")
 	LocationServiceURL     = getEnv("LOCATION_SERVICE_URL", "http://localhost:5003")
 	NotificationServiceURL = getEnv("NOTIFICATION_SERVICE_URL", "http://localhost:5004")
+	ChatServiceURL         = getEnv("CHAT_SERVICE_URL", "http://localhost:5005")
 )
 
 func getEnv(key, defaultValue string) string {
@@ -33,6 +34,7 @@ func main() {
 	log.Printf("🔗 Order Service URL: %s", OrderServiceURL)
 	log.Printf("🔗 Location Service URL: %s", LocationServiceURL)
 	log.Printf("🔗 Notification Service URL: %s", NotificationServiceURL)
+	log.Printf("🔗 Chat Service URL: %s", ChatServiceURL)
 
 	r := gin.Default()
 
@@ -137,6 +139,22 @@ func main() {
 		}
 	}
 
+	// Chat Service Routes
+	chatRoutes := r.Group("/api/v1")
+	{
+		// Health check for chat service
+		chatRoutes.GET("/chat/health", proxyToChatService("GET", "/health"))
+
+		// Chat routes
+		chats := chatRoutes.Group("/chats")
+		{
+			chats.POST("/messages", proxyToChatService("POST", "/api/v1/chats/messages"))
+			chats.GET("/order/:order_id", proxyToChatService("GET", "/api/v1/chats/order/:order_id"))
+			chats.GET("/order/:order_id/unread", proxyToChatService("GET", "/api/v1/chats/order/:order_id/unread"))
+			chats.PATCH("/order/:order_id/read", proxyToChatService("PATCH", "/api/v1/chats/order/:order_id/read"))
+		}
+	}
+
 	// WebSocket Routes
 	wsRoutes := r.Group("/api/v1/ws")
 	{
@@ -145,6 +163,9 @@ func main() {
 
 		// Location WebSocket - proxy to location service
 		wsRoutes.GET("/locations/:order_id", proxyWebSocketToLocationService())
+
+		// Chat WebSocket - proxy to chat service
+		wsRoutes.GET("/chat/:order_id", proxyWebSocketToChatService())
 	}
 
 	log.Println("🚀 API Gateway running on http://localhost:5000")
@@ -446,6 +467,105 @@ func proxyWebSocketToLocationService() gin.HandlerFunc {
 		// Proxy bidirectionally
 		go proxyWebSocket(clientConn, serviceConn)
 		proxyWebSocket(serviceConn, clientConn)
+	}
+}
+
+// proxyWebSocketToChatService proxies WebSocket connections to chat service
+func proxyWebSocketToChatService() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		orderID := c.Param("order_id")
+		userID := c.Query("user_id")
+
+		// Upgrade client connection
+		clientConn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+		if err != nil {
+			log.Printf("Failed to upgrade client connection: %v", err)
+			return
+		}
+		defer clientConn.Close()
+
+		// Connect to chat service
+		wsURL := strings.Replace(ChatServiceURL, "http://", "ws://", 1)
+		wsURL = strings.Replace(wsURL, "https://", "wss://", 1)
+		serviceURL, _ := url.Parse(wsURL + "/api/v1/ws/chat/" + orderID + "?user_id=" + userID)
+
+		serviceConn, _, err := websocket.DefaultDialer.Dial(serviceURL.String(), nil)
+		if err != nil {
+			log.Printf("Failed to connect to chat service WebSocket: %v", err)
+			return
+		}
+		defer serviceConn.Close()
+
+		log.Printf("✅ WebSocket proxy established for chat: %s", orderID)
+
+		// Proxy bidirectionally
+		go proxyWebSocket(clientConn, serviceConn)
+		proxyWebSocket(serviceConn, clientConn)
+	}
+}
+
+// proxyToChatService creates a proxy handler for chat service
+func proxyToChatService(method, path string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Read request body
+		var bodyBytes []byte
+		if c.Request.Body != nil {
+			bodyBytes, _ = io.ReadAll(c.Request.Body)
+		}
+
+		// Replace URL parameters with actual values
+		actualPath := path
+		for _, param := range c.Params {
+			actualPath = strings.Replace(actualPath, ":"+param.Key, param.Value, -1)
+		}
+
+		// Add query parameters
+		queryParams := c.Request.URL.Query()
+		if len(queryParams) > 0 {
+			actualPath += "?" + queryParams.Encode()
+		}
+
+		// Create new request to chat service
+		url := ChatServiceURL + actualPath
+		req, err := http.NewRequest(method, url, bytes.NewBuffer(bodyBytes))
+		if err != nil {
+			c.JSON(500, gin.H{"error": "Failed to create request"})
+			return
+		}
+
+		// Copy headers
+		for key, values := range c.Request.Header {
+			for _, value := range values {
+				req.Header.Add(key, value)
+			}
+		}
+
+		// Make request to chat service
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Printf("❌ Failed to connect to chat service at %s: %v", url, err)
+			c.JSON(500, gin.H{"error": "Chat service unavailable", "details": err.Error()})
+			return
+		}
+		defer resp.Body.Close()
+
+		// Read response body
+		respBody, err := io.ReadAll(resp.Body)
+		if err != nil {
+			c.JSON(500, gin.H{"error": "Failed to read response"})
+			return
+		}
+
+		// Copy response headers
+		for key, values := range resp.Header {
+			for _, value := range values {
+				c.Header(key, value)
+			}
+		}
+
+		// Return response
+		c.Data(resp.StatusCode, resp.Header.Get("Content-Type"), respBody)
 	}
 }
 
