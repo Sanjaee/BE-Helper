@@ -1,6 +1,7 @@
 package main
 
 import (
+	"chat-service/internal/cache"
 	"chat-service/internal/config"
 	"chat-service/internal/database"
 	"chat-service/internal/events"
@@ -35,6 +36,16 @@ func main() {
 
 	log.Println("✅ RabbitMQ connected successfully")
 
+	// Initialize Redis Cache
+	redisCache, err := cache.NewRedisCache(cfg.RedisHost, cfg.RedisPort, cfg.RedisPassword, cfg.RedisDB)
+	if err != nil {
+		log.Printf("⚠️  Redis connection failed (cache disabled): %v", err)
+		redisCache = nil // Continue without cache
+	} else {
+		defer redisCache.Close()
+		log.Println("✅ Redis cache connected successfully")
+	}
+
 	// Initialize WebSocket hub
 	hub := websocket.NewHub()
 	go hub.Run()
@@ -43,7 +54,7 @@ func main() {
 	chatRepo := repository.NewChatRepository(db)
 
 	// Initialize services
-	chatService := services.NewChatService(chatRepo, rabbitMQ, hub)
+	chatService := services.NewChatService(chatRepo, rabbitMQ, hub, redisCache)
 
 	// Initialize handlers
 	chatHandler := handlers.NewChatHandler(chatService)
@@ -92,4 +103,3 @@ func main() {
 	log.Printf("🚀 Chat Service running on port %s", cfg.Port)
 	r.Run(":" + cfg.Port)
 }
-

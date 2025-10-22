@@ -278,12 +278,18 @@ services:
       - RABBITMQ_PORT=5672
       - RABBITMQ_USERNAME=admin
       - RABBITMQ_PASSWORD=secret123
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=
+      - REDIS_DB=2
       - PORT=5005
       - GIN_MODE=debug
     ports:
       - "5005:5005"
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
